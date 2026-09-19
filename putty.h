@@ -2392,6 +2392,7 @@ extern const cmdline_get_passwd_input_state cmdline_get_passwd_input_state_new;
 int cmdline_process_param(CmdlineArg *, CmdlineArg *, int, Conf *);
 void cmdline_run_saved(Conf *);
 void cmdline_cleanup(void);
+void cmdline_set_password(const char *password);
 SeatPromptResult cmdline_get_passwd_input(
     prompts_t *p, cmdline_get_passwd_input_state *state, bool restartable);
 bool cmdline_host_ok(Conf *);

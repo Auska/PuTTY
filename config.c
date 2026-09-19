@@ -2532,6 +2532,10 @@ void setup_config_box(struct controlbox *b, bool midsession,
             ctrl_editbox(s, "自动登录用户名(U)：", 'u', 50,
                          HELPCTX(connection_username),
                          conf_editbox_handler, I(CONF_username), ED_STR);
+            c = ctrl_editbox(s, "自动登录密码(P)：", 'p', 50,
+                             HELPCTX(no_help),
+                             conf_editbox_handler, I(CONF_password), ED_STR);
+            c->editbox.password = true;
             {
                 /* We assume the local username is sufficiently stable
                  * to include on the dialog box. */

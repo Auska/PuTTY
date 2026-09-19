@@ -702,6 +702,9 @@ bool load_settings(const char *section, Conf *conf)
     if (exists && conf_launchable(conf))
         add_session_to_jumplist(section);
 
+    /* 保存的密码注入命令行密码通道，供认证提示自动填充 */
+    cmdline_set_password(conf_get_str(conf, CONF_password));
+
     return exists;
 }
 
