@@ -286,6 +286,7 @@ static void start_backend(WinGuiSeat *wgs)
     int i;
 
     wgs->cmdline_get_passwd_state = cmdline_get_passwd_input_state_new;
+    wgs->used_saved_password = false;
 
     vt = backend_vt_from_conf(wgs->conf);
 
@@ -5911,11 +5912,41 @@ static bool win_seat_eof(Seat *seat)
     return true;   /* do respond to incoming EOF with outgoing */
 }
 
+/*
+ * Fill in a password prompt from the password stored in the session's
+ * own Conf. Unlike the command-line password, if the server rejects
+ * this one we simply fall through to the interactive prompt, so that a
+ * mistyped saved password doesn't abort the whole session.
+ */
+static SeatPromptResult win_seat_get_saved_password(
+    WinGuiSeat *wgs, prompts_t *p)
+{
+    const char *password;
+
+    /* Same restrictions as cmdline_get_passwd_input(): one non-echoing
+     * prompt, destined for the server rather than for local use. */
+    if (p->n_prompts != 1 || p->prompts[0]->echo || !p->to_server)
+        return SPR_INCOMPLETE;
+
+    if (wgs->used_saved_password)
+        return SPR_INCOMPLETE;
+
+    password = conf_get_str(wgs->conf, CONF_password);
+    if (!*password)
+        return SPR_INCOMPLETE;
+
+    prompt_set_result(p->prompts[0], password);
+    wgs->used_saved_password = true;
+    return SPR_OK;
+}
+
 static SeatPromptResult win_seat_get_userpass_input(Seat *seat, prompts_t *p)
 {
     WinGuiSeat *wgs = container_of(seat, WinGuiSeat, seat);
     SeatPromptResult spr;
     spr = cmdline_get_passwd_input(p, &wgs->cmdline_get_passwd_state, true);
+    if (spr.kind == SPRK_INCOMPLETE)
+        spr = win_seat_get_saved_password(wgs, p);
     if (spr.kind == SPRK_INCOMPLETE)
         spr = term_get_userpass_input(wgs->term, p);
     return spr;
