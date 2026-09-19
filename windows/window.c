@@ -50,6 +50,7 @@
 #define IDM_FULLSCREEN  0x0180
 #define IDM_COPY      0x0190
 #define IDM_PASTE     0x01A0
+#define IDM_WINSCP    0x01B0
 #define IDM_SPECIALSEP 0x0200
 
 #define IDM_SPECIAL_MIN 0x0400
@@ -307,6 +308,74 @@ static void win_set_window_opacity(HWND hwnd, Conf *conf)
         SetLayeredWindowAttributes(
             hwnd, 0, (BYTE)(percent * 255 / 100), LWA_ALPHA);
     }
+}
+
+/*
+ * Look for WinSCP.exe in the usual installation directories. Returns a
+ * freshly allocated path, or NULL if WinSCP is not installed.
+ */
+static char *find_winscp_exe(void)
+{
+    static const char *const envvars[] = {
+        "ProgramFiles", "ProgramFiles(x86)"
+    };
+
+    for (size_t i = 0; i < lenof(envvars); i++) {
+        const char *dir = getenv(envvars[i]);
+        if (!dir)
+            continue;
+
+        char *path = dupprintf("%s\\WinSCP\\WinSCP.exe", dir);
+        DWORD attr = GetFileAttributes(path);
+        if (attr != INVALID_FILE_ATTRIBUTES &&
+            !(attr & FILE_ATTRIBUTE_DIRECTORY))
+            return path;
+        sfree(path);
+    }
+
+    return NULL;
+}
+
+/*
+ * Start WinSCP on the current session, as KiTTY's Start WinSCP menu
+ * item does: "<winscp> sftp://user[:password]@host:port/ [/privatekey=...]"
+ */
+static void start_winscp(WinGuiSeat *wgs)
+{
+    char *winscp = find_winscp_exe();
+    if (!winscp)
+        return;                /* the menu item is disabled in this case */
+
+    Conf *conf = wgs->conf;
+    bool ssh = (conf_get_int(conf, CONF_protocol) == PROT_SSH);
+    const char *host = conf_get_str(conf, CONF_host);
+    const char *password = conf_get_str(conf, CONF_password);
+
+    strbuf *args = strbuf_new();
+    put_fmt(args, "%s://", ssh ? "sftp" : "ftp");
+    put_dataz(args, conf_get_str_ambi(conf, CONF_username, NULL));
+    if (*password) {
+        put_byte(args, ':');
+        put_dataz(args, password);
+    }
+    put_byte(args, '@');
+    /* An IPv6 literal host has to be bracketed, as in a URL. */
+    if (strchr(host, ':'))
+        put_fmt(args, "[%s]", host);
+    else
+        put_dataz(args, host);
+    put_fmt(args, ":%d/", ssh ? conf_get_int(conf, CONF_port) : 21);
+
+    Filename *keyfile = conf_get_filename(conf, CONF_keyfile);
+    if (keyfile->cpath[0])
+        put_fmt(args, " \"/privatekey=%s\"", keyfile->cpath);
+
+    ShellExecute(wgs->term_hwnd, NULL, winscp, args->s, NULL, SW_SHOWNORMAL);
+
+    /* The command line holds the session password, so wipe our copy. */
+    smemclr(args->s, args->len);
+    strbuf_free(args);
+    sfree(winscp);
 }
 
 static void start_backend(WinGuiSeat *wgs)
@@ -795,6 +864,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, MF_POPUP | MF_ENABLED, (UINT_PTR)wgs->savedsess_menu,
                        "保存的会话(&V)");
             AppendMenu(m, MF_ENABLED, IDM_RECONF, "修改设置(&G)...");
+            char *winscp = find_winscp_exe();
+            AppendMenu(m, winscp ? MF_ENABLED : (MF_DISABLED | MF_GRAYED),
+                       IDM_WINSCP, "启动 WinSCP(&S)");
+            sfree(winscp);
             AppendMenu(m, MF_SEPARATOR, 0, 0);
             AppendMenu(m, MF_ENABLED, IDM_COPYALL, "复制所有内容到剪贴板(&O)");
             AppendMenu(m, MF_ENABLED, IDM_CLRSB, "清除滚动条(&L)");
@@ -2384,6 +2457,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 start_backend(wgs);
             }
 
+            break;
+          case IDM_WINSCP:
+            start_winscp(wgs);
             break;
           case IDM_RECONF: {
             Conf *prev_conf;
