@@ -185,6 +185,17 @@ void win_setup_config_box(struct controlbox *b, HWND *hwndp, bool has_help,
                   conf_checkbox_handler, I(CONF_sunken_edge));
 
     /*
+     * Whole-window opacity, done with a Windows layered window.
+     */
+    ctrl_settitle(b, "窗口/透明度", "窗口透明度");
+    s = ctrl_getset(b, "窗口/透明度", "general", NULL);
+    ctrl_editbox(s, "不透明度(0-100)：", NO_SHORTCUT, 20,
+                 HELPCTX(no_help), conf_editbox_handler,
+                 I(CONF_window_opacity), ED_INT);
+    ctrl_text(s, "(0 为完全透明，100 为完全不透明)",
+              HELPCTX(no_help));
+
+    /*
      * Configurable font quality settings for Windows.
      */
     s = ctrl_getset(b, "窗口/外观", "font",

@@ -279,6 +279,36 @@ static const SeatVtable win_seat_vt = {
     .get_cursor_position = win_seat_get_cursor_position,
 };
 
+/*
+ * Set the whole window's opacity from CONF_window_opacity, a
+ * percentage in which 100 means fully opaque. Anything less than that
+ * needs a layered window.
+ */
+static void win_set_window_opacity(HWND hwnd, Conf *conf)
+{
+    int percent = conf_get_int(conf, CONF_window_opacity);
+    LONG_PTR exstyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+
+    if (percent < 0)
+        percent = 0;
+    if (percent > 100)
+        percent = 100;
+
+    if (percent == 100) {
+        if (exstyle & WS_EX_LAYERED) {
+            SetWindowLongPtr(hwnd, GWL_EXSTYLE, exstyle & ~WS_EX_LAYERED);
+            RedrawWindow(hwnd, NULL, NULL,
+                         RDW_ERASE | RDW_FRAME | RDW_INVALIDATE);
+        }
+    } else {
+        if (!(exstyle & WS_EX_LAYERED)) {
+            SetWindowLongPtr(hwnd, GWL_EXSTYLE, exstyle | WS_EX_LAYERED);
+        }
+        SetLayeredWindowAttributes(
+            hwnd, 0, (BYTE)(percent * 255 / 100), LWA_ALPHA);
+    }
+}
+
 static void start_backend(WinGuiSeat *wgs)
 {
     const struct BackendVtable *vt;
@@ -606,6 +636,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     }
 
     SetWindowLongPtr(wgs->term_hwnd, GWLP_USERDATA, (LONG_PTR)wgs);
+
+    win_set_window_opacity(wgs->term_hwnd, wgs->conf);
 
     /*
      * Initialise the fonts, simultaneously correcting the guesses
@@ -2495,6 +2527,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                     init_lvl = 2;
                 }
             }
+
+            win_set_window_opacity(hwnd, wgs->conf);
 
             /* Oops */
             if (resize_action == RESIZE_DISABLED && IsZoomed(hwnd)) {

@@ -888,6 +888,11 @@ CONF_OPTION(sunken_edge,
     DEFAULT_BOOL(false),
     SAVE_KEYWORD("SunkenEdge"),
 )
+CONF_OPTION(window_opacity,
+    VALUE_TYPE(INT), /* percentage: 100 = fully opaque */
+    DEFAULT_INT(100),
+    SAVE_KEYWORD("WindowOpacity"),
+)
 CONF_OPTION(window_border,
     VALUE_TYPE(INT), /* in pixels */
     DEFAULT_INT(1),
