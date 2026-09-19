@@ -5529,6 +5529,81 @@ static DWORD WINAPI clipboard_read_threadfunc(void *param)
     return 0;
 }
 
+struct pasteconfirm_ctx {
+    const wchar_t *text;
+    Conf *conf;
+    wchar_t *edited;
+    size_t edited_len;
+};
+
+static INT_PTR CALLBACK PasteConfirmProc(HWND hwnd, UINT msg, WPARAM wParam,
+                                         LPARAM lParam, void *ctx)
+{
+    struct pasteconfirm_ctx *pc = ctx;
+
+    switch (msg) {
+      case WM_INITDIALOG:
+        SetDlgItemTextW(hwnd, IDC_PC_TEXT, pc->text);
+        SendDlgItemMessageW(hwnd, IDC_PC_TEXT, EM_SETSEL, 0, -1);
+        /* Match the session window's opacity, if it has any. */
+        win_set_window_opacity(hwnd, pc->conf);
+        ShowWindow(hwnd, SW_SHOWNORMAL);
+        return 1;
+      case WM_COMMAND:
+        switch (LOWORD(wParam)) {
+          case IDOK: {
+            int len = SendDlgItemMessageW(hwnd, IDC_PC_TEXT,
+                                          WM_GETTEXTLENGTH, 0, 0);
+            pc->edited = snewn(len + 1, wchar_t);
+            pc->edited_len = GetDlgItemTextW(hwnd, IDC_PC_TEXT,
+                                             pc->edited, len + 1);
+            ShinyEndDialog(hwnd, IDOK);
+            return 0;
+          }
+          case IDCANCEL:
+            ShinyEndDialog(hwnd, IDCANCEL);
+            return 0;
+        }
+        return 0;
+      case WM_CLOSE:
+        ShinyEndDialog(hwnd, IDCANCEL);
+        return 0;
+    }
+    return 0;
+}
+
+/*
+ * Paste the given text into the session, asking the user to confirm it
+ * first if it runs over more than one line: a multi-line paste is how
+ * you accidentally run a command you didn't mean to. The dialog box is
+ * editable, and we paste whatever the user leaves in it. Takes
+ * ownership of the text.
+ */
+static void paste_with_confirm(WinGuiSeat *wgs, wchar_t *text, size_t len)
+{
+    bool multiline = false;
+    for (size_t i = 0; i < len; i++)
+        if (text[i] == L'\r' || text[i] == L'\n')
+            multiline = true;
+
+    if (multiline) {
+        struct pasteconfirm_ctx ctx[1];
+        ctx->text = text;
+        ctx->conf = wgs->conf;
+
+        bool ok = ShinyDialogBox(hinst, MAKEINTRESOURCE(IDD_PASTECONFIRM),
+                                 "PuTTYPasteConfirm", wgs->term_hwnd,
+                                 PasteConfirmProc, ctx) == IDOK;
+        sfree(text);
+        text = ok ? ctx->edited : NULL;
+        len = ok ? ctx->edited_len : 0;
+    }
+
+    if (text)
+        term_do_paste(wgs->term, text, len);
+    sfree(text);
+}
+
 static void process_clipdata(WinGuiSeat *wgs, HGLOBAL clipdata, bool unicode)
 {
     wchar_t *clipboard_contents = NULL;
@@ -5545,7 +5620,7 @@ static void process_clipdata(WinGuiSeat *wgs, HGLOBAL clipdata, bool unicode)
             clipboard_contents = snewn(clipboard_length + 1, wchar_t);
             memcpy(clipboard_contents, p, clipboard_length * sizeof(wchar_t));
             clipboard_contents[clipboard_length] = L'\0';
-            term_do_paste(wgs->term, clipboard_contents, clipboard_length);
+            paste_with_confirm(wgs, clipboard_contents, clipboard_length);
         }
     } else {
         char *s = GlobalLock(clipdata);
@@ -5558,11 +5633,9 @@ static void process_clipdata(WinGuiSeat *wgs, HGLOBAL clipdata, bool unicode)
                                 clipboard_contents, i);
             clipboard_length = i - 1;
             clipboard_contents[clipboard_length] = L'\0';
-            term_do_paste(wgs->term, clipboard_contents, clipboard_length);
+            paste_with_confirm(wgs, clipboard_contents, clipboard_length);
         }
     }
-
-    sfree(clipboard_contents);
 }
 
 static void wintw_clip_request_paste(TermWin *tw, int clipboard)

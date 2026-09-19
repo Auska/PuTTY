@@ -16,6 +16,7 @@
 #define IDD_HOSTKEY      114
 #define IDD_HK_MOREINFO  116
 #define IDD_CA_CONFIG    117
+#define IDD_PASTECONFIRM 118
 
 #define IDN_LIST        1001
 #define IDN_COPY        1002
@@ -40,6 +41,8 @@
 #define IDC_HK_HOST     1002
 #define IDC_HK_FINGERPRINT 1003
 #define IDC_HK_MOREINFO 1004
+
+#define IDC_PC_TEXT      101
 
 #define IDC_HKI_SHA256  1000
 #define IDC_HKI_MD5     1001
